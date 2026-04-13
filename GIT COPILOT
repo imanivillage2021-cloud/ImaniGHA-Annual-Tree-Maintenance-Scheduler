@@ -1,0 +1,885 @@
+npm create vite@latest imani-green-scheduler -- --template react
+cd imani-green-scheduler
+npm install framer-motion lucide-react
+{
+  "name": "imani-green-scheduler",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.263.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.1.0"
+  }
+}
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+  },
+})
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Imani Green Health Advocate - Tree Maintenance Scheduler</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.jsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  min-height: 100vh;
+  padding: 20px;
+}
+
+#root {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 10px;
+  }
+}
+import React, { useState, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Calendar,
+  Clock,
+  Mail,
+  User,
+  FileText,
+  Download,
+  Lock,
+  LogOut,
+  CheckCircle,
+  AlertCircle,
+  Trash2,
+} from 'lucide-react';
+
+const ADMIN_TOKEN = 'admin-secret-token-2024';
+const TIME_SLOTS = [
+  '09:00 AM',
+  '09:45 AM',
+  '10:30 AM',
+  '11:15 AM',
+  '12:00 PM',
+  '12:45 PM',
+  '01:30 PM',
+  '02:15 PM',
+  '03:00 PM',
+  '03:45 PM',
+  '04:30 PM',
+];
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+function App() {
+  const [view, setView] = useState('scheduler'); // 'scheduler' or 'admin'
+  const [bookings, setBookings] = useState([]);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    dates: [],
+    preferredWeekday: '',
+    timeSlot: '',
+    notes: '',
+  });
+  const [submitStatus, setSubmitStatus] = useState(null);
+  const [adminToken, setAdminToken] = useState('');
+  const [authAttempt, setAuthAttempt] = useState('');
+
+  // Get URL token on component mount
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token && token === ADMIN_TOKEN) {
+      setView('admin');
+      setAdminToken(token);
+    }
+  }, []);
+
+  // Generate date range from June 15 to November 10
+  const generateAvailableDates = () => {
+    const dates = [];
+    const startDate = new Date(2024, 5, 15); // June 15
+    const endDate = new Date(2024, 10, 10); // November 10
+    let currentDate = new Date(startDate);
+
+    while (currentDate <= endDate) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const availableDates = useMemo(() => generateAvailableDates(), []);
+
+  // Get booked time slots for a specific date
+  const getBookedSlotsForDate = (date) => {
+    return bookings
+      .filter((booking) => {
+        return booking.dates.some((d) => {
+          const bookingDate = new Date(d);
+          return (
+            bookingDate.toDateString() === new Date(date).toDateString()
+          );
+        });
+      })
+      .map((booking) => booking.timeSlot);
+  };
+
+  // Handle form input changes
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  // Handle date selection (exactly 3)
+  const handleDateToggle = (date) => {
+    setFormData((prev) => {
+      const dateStr = date.toISOString().split('T')[0];
+      const newDates = prev.dates.includes(dateStr)
+        ? prev.dates.filter((d) => d !== dateStr)
+        : prev.dates.length < 3
+        ? [...prev.dates, dateStr]
+        : prev.dates;
+
+      return {
+        ...prev,
+        dates: newDates,
+      };
+    });
+  };
+
+  // Check if date is a valid weekday
+  const isValidWeekday = (date, preferredWeekday) => {
+    const dayIndex = date.getDay();
+    const dayName = WEEKDAYS[dayIndex - 1];
+    return dayName === preferredWeekday;
+  };
+
+  // Filter dates based on selected weekday
+  const filteredDates = useMemo(() => {
+    if (!formData.preferredWeekday) return availableDates;
+    return availableDates.filter((date) =>
+      isValidWeekday(date, formData.preferredWeekday)
+    );
+  }, [formData.preferredWeekday, availableDates]);
+
+  // Generate ICS file
+  const generateICSFile = (booking) => {
+    const timezoneBlock = `BEGIN:VTIMEZONE
+TZID:America/Chicago
+BEGIN:STANDARD
+DTSTART:20241103T020000
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0600
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZNAME:CST
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:20240310T020000
+TZOFFSETFROM:-0600
+TZOFFSETTO:-0500
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZNAME:CDT
+END:DAYLIGHT
+END:VTIMEZONE`;
+
+    const events = booking.dates
+      .map((dateStr) => {
+        const [year, month, day] = dateStr.split('-');
+        const [time, period] = booking.timeSlot.split(' ');
+        let [hours, minutes] = time.split(':');
+        hours = parseInt(hours);
+
+        if (period === 'PM' && hours !== 12) {
+          hours += 12;
+        } else if (period === 'AM' && hours === 12) {
+          hours = 0;
+        }
+
+        const startTime = `${year}${month}${day}T${String(hours).padStart(
+          2,
+          '0'
+        )}${minutes}00`;
+        const endHours = Math.floor((hours * 60 + parseInt(minutes) + 45) / 60);
+        const endMinutes = (hours * 60 + parseInt(minutes) + 45) % 60;
+        const endTime = `${year}${month}${day}T${String(endHours).padStart(
+          2,
+          '0'
+        )}${String(endMinutes).padStart(2, '0')}00`;
+
+        const uid = `${dateStr}-${booking.timeSlot.replace(/\s/g, '')}-imani-green@scheduler.local`;
+
+        return `BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:20240413T000000Z
+DTSTART;TZID=America/Chicago:${startTime}
+DTEND;TZID=America/Chicago:${endTime}
+SUMMARY:Imani Green Health Advocate Annual Tree Maintenance
+DESCRIPTION:Tree Maintenance Service\\nPreferred Weekday: ${booking.preferredWeekday}\\nNotes: ${
+          booking.notes || 'No notes'
+        }
+LOCATION:Property Address
+STATUS:CONFIRMED
+SEQUENCE:0
+END:VEVENT`;
+      })
+      .join('\n');
+
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Imani Green Health Advocate//Tree Maintenance Scheduler//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Imani Green Health Advocate Annual Tree Maintenance
+X-WR-TIMEZONE:America/Chicago
+${timezoneBlock}
+${events}
+END:VCALENDAR`;
+
+    return icsContent;
+  };
+
+  // Download ICS file
+  const downloadICS = (booking) => {
+    const icsContent = generateICSFile(booking);
+    const blob = new Blob([icsContent], { type: 'text/calendar' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `imani-green-tree-maintenance-${booking.name.replace(
+      /\s+/g,
+      '-'
+    )}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Handle form submission
+  const handleSubmit = (e) => {
+    e.preventDefault();
+
+    if (
+      !formData.name ||
+      !formData.email ||
+      formData.dates.length !== 3 ||
+      !formData.preferredWeekday ||
+      !formData.timeSlot
+    ) {
+      setSubmitStatus({
+        type: 'error',
+        message: 'Please fill in all required fields and select exactly 3 dates.',
+      });
+      return;
+    }
+
+    // Validate dates are on the correct weekday
+    const invalidDates = formData.dates.filter((dateStr) => {
+      const date = new Date(dateStr);
+      return !isValidWeekday(date, formData.preferredWeekday);
+    });
+
+    if (invalidDates.length > 0) {
+      setSubmitStatus({
+        type: 'error',
+        message: `Selected dates don't match the preferred weekday.`,
+      });
+      return;
+    }
+
+    // Check if time slot is already booked for any of the selected dates
+    const bookedSlots = formData.dates.flatMap((dateStr) =>
+      getBookedSlotsForDate(new Date(dateStr))
+    );
+
+    if (bookedSlots.includes(formData.timeSlot)) {
+      setSubmitStatus({
+        type: 'error',
+        message: 'Selected time slot is already booked for one of your dates.',
+      });
+      return;
+    }
+
+    // Create booking
+    const newBooking = {
+      id: Date.now(),
+      ...formData,
+      createdAt: new Date().toISOString(),
+    };
+
+    setBookings((prev) => [...prev, newBooking]);
+    setSubmitStatus({
+      type: 'success',
+      message: 'Your booking has been confirmed! Check your email for details.',
+    });
+
+    // Download ICS automatically
+    setTimeout(() => {
+      downloadICS(newBooking);
+    }, 1000);
+
+    // Reset form
+    setTimeout(() => {
+      setFormData({
+        name: '',
+        email: '',
+        dates: [],
+        preferredWeekday: '',
+        timeSlot: '',
+        notes: '',
+      });
+      setSubmitStatus(null);
+    }, 3000);
+  };
+
+  // Admin authentication
+  const handleAdminAuth = (e) => {
+    e.preventDefault();
+    if (authAttempt === ADMIN_TOKEN) {
+      setAdminToken(authAttempt);
+      setView('admin');
+      setAuthAttempt('');
+      window.history.pushState(null, '', `?token=${ADMIN_TOKEN}`);
+      setSubmitStatus({
+        type: 'success',
+        message: 'Admin access granted!',
+      });
+      setTimeout(() => setSubmitStatus(null), 2000);
+    } else {
+      setSubmitStatus({
+        type: 'error',
+        message: 'Invalid admin token.',
+      });
+    }
+  };
+
+  // Logout
+  const handleLogout = () => {
+    setAdminToken('');
+    setView('scheduler');
+    setAuthAttempt('');
+    window.history.pushState(null, '', window.location.pathname);
+  };
+
+  // Delete booking (admin only)
+  const deleteBooking = (id) => {
+    setBookings((prev) => prev.filter((booking) => booking.id !== id));
+    setSubmitStatus({
+      type: 'success',
+      message: 'Booking deleted successfully.',
+    });
+    setTimeout(() => setSubmitStatus(null), 2000);
+  };
+
+  return (
+    <div className="min-h-screen pb-20">
+      {/* Status Messages */}
+      {submitStatus && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className={`fixed top-4 left-4 right-4 p-4 rounded-lg shadow-lg flex items-center gap-3 z-50 max-w-md mx-auto ${
+            submitStatus.type === 'success'
+              ? 'bg-green-100 border border-green-400 text-green-800'
+              : 'bg-red-100 border border-red-400 text-red-800'
+          }`}
+        >
+          {submitStatus.type === 'success' ? (
+            <CheckCircle size={20} />
+          ) : (
+            <AlertCircle size={20} />
+          )}
+          <span className="text-sm font-medium">{submitStatus.message}</span>
+        </motion.div>
+      )}
+
+      {/* Scheduler View */}
+      {view === 'scheduler' && adminToken === '' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-2xl mx-auto"
+        >
+          <div className="bg-white rounded-2xl shadow-xl p-8 mb-6">
+            {/* Header */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1 }}
+              className="text-center mb-8"
+            >
+              <h1 className="text-4xl font-bold text-green-800 mb-2">
+                🌱 Imani Green Health Advocate
+              </h1>
+              <p className="text-gray-600 text-lg">
+                Annual Tree Maintenance Scheduler
+              </p>
+            </motion.div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Name & Email */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              >
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    <User size={18} />
+                    Your Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    placeholder="John Doe"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    <Mail size={18} />
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    placeholder="john@example.com"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition"
+                    required
+                  />
+                </div>
+              </motion.div>
+
+              {/* Preferred Weekday */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <Calendar size={18} />
+                  Preferred Weekday *
+                </label>
+                <div className="grid grid-cols-5 gap-2">
+                  {WEEKDAYS.map((day) => (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          preferredWeekday: prev.preferredWeekday === day ? '' : day,
+                        }))
+                      }
+                      className={`py-2 px-3 rounded-lg font-medium transition ${
+                        formData.preferredWeekday === day
+                          ? 'bg-green-600 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {day.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+
+              {/* Date Selection */}
+              {formData.preferredWeekday && (
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Calendar size={18} />
+                    Select Exactly 3 Dates ({formData.dates.length}/3) *
+                  </label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-64 overflow-y-auto p-3 border-2 border-gray-300 rounded-lg">
+                    {filteredDates.map((date) => {
+                      const dateStr = date.toISOString().split('T')[0];
+                      const isSelected = formData.dates.includes(dateStr);
+                      const dayName = WEEKDAYS[date.getDay() - 1];
+                      const formattedDate = date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      });
+
+                      return (
+                        <button
+                          key={dateStr}
+                          type="button"
+                          onClick={() => handleDateToggle(date)}
+                          className={`py-3 px-3 rounded-lg text-sm font-medium transition border-2 ${
+                            isSelected
+                              ? 'border-green-600 bg-green-100 text-green-800'
+                              : 'border-gray-300 bg-white text-gray-700 hover:border-green-400'
+                          }`}
+                        >
+                          <div>{formattedDate}</div>
+                          <div className="text-xs opacity-75">{dayName}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Time Slot Selection */}
+              {formData.dates.length === 3 && (
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  <label className="block text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Clock size={18} />
+                    Select a 45-Minute Time Slot *
+                  </label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {TIME_SLOTS.map((slot) => {
+                      const isBooked = formData.dates.some((dateStr) =>
+                        getBookedSlotsForDate(new Date(dateStr)).includes(slot)
+                      );
+
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() =>
+                            !isBooked &&
+                            setFormData((prev) => ({
+                              ...prev,
+                              timeSlot: prev.timeSlot === slot ? '' : slot,
+                            }))
+                          }
+                          disabled={isBooked}
+                          className={`py-3 px-3 rounded-lg font-medium transition border-2 ${
+                            formData.timeSlot === slot
+                              ? 'border-green-600 bg-green-100 text-green-800'
+                              : isBooked
+                              ? 'border-red-300 bg-red-100 text-red-500 cursor-not-allowed opacity-50'
+                              : 'border-gray-300 bg-white text-gray-700 hover:border-green-400'
+                          }`}
+                        >
+                          {slot}
+                          {isBooked && <div className="text-xs mt-1">Booked</div>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Notes */}
+              {formData.timeSlot && (
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.6 }}
+                >
+                  <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    <FileText size={18} />
+                    Additional Notes (Optional)
+                  </label>
+                  <textarea
+                    name="notes"
+                    value={formData.notes}
+                    onChange={handleInputChange}
+                    placeholder="Any special instructions or notes for the tree maintenance crew..."
+                    rows={4}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition resize-none"
+                  />
+                </motion.div>
+              )}
+
+              {/* Submit Button */}
+              {formData.timeSlot && (
+                <motion.button
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.7 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-green-600 to-green-500 text-white font-bold py-4 rounded-lg hover:from-green-700 hover:to-green-600 transition shadow-lg flex items-center justify-center gap-2"
+                >
+                  <Download size={20} />
+                  Book & Download Calendar File
+                </motion.button>
+              )}
+            </form>
+
+            {/* Admin Link */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.8 }}
+              className="mt-8 pt-8 border-t border-gray-300 text-center"
+            >
+              <button
+                onClick={() => setView('admin')}
+                className="text-gray-600 hover:text-green-600 font-medium flex items-center justify-center gap-2 mx-auto"
+              >
+                <Lock size={16} />
+                Admin Access
+              </button>
+            </motion.div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Admin View */}
+      {view === 'admin' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-6xl mx-auto"
+        >
+          {/* Admin Auth Form */}
+          {!adminToken && (
+            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md mx-auto mb-6">
+              <h2 className="text-2xl font-bold text-green-800 mb-6 flex items-center gap-2">
+                <Lock size={28} />
+                Admin Access
+              </h2>
+              <form onSubmit={handleAdminAuth} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Admin Token
+                  </label>
+                  <input
+                    type="password"
+                    value={authAttempt}
+                    onChange={(e) => setAuthAttempt(e.target.value)}
+                    placeholder="Enter admin token"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition"
+                >
+                  Authenticate
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Admin Dashboard */}
+          {adminToken && (
+            <>
+              <div className="bg-white rounded-2xl shadow-xl p-8 mb-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-3xl font-bold text-green-800 flex items-center gap-2">
+                    <Lock size={28} />
+                    Admin Dashboard
+                  </h2>
+                  <button
+                    onClick={handleLogout}
+                    className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition flex items-center gap-2"
+                  >
+                    <LogOut size={18} />
+                    Logout
+                  </button>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                  <p className="text-blue-800 font-medium">
+                    Total Bookings: <span className="text-2xl font-bold">{bookings.length}</span>
+                  </p>
+                </div>
+
+                {bookings.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 text-lg">No bookings yet.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-100 border-b-2 border-gray-300">
+                          <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                            Name
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                            Email
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                            Weekday
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                            Dates
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                            Time Slot
+                          </th>
+                          <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                            Notes
+                          </th>
+                          <th className="px-4 py-3 text-center font-semibold text-gray-700">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bookings.map((booking) => (
+                          <motion.tr
+                            key={booking.id}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="border-b border-gray-200 hover:bg-gray-50"
+                          >
+                            <td className="px-4 py-3 font-medium text-gray-800">
+                              {booking.name}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">{booking.email}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {booking.preferredWeekday}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">
+                              <div className="flex flex-wrap gap-1">
+                                {booking.dates.map((date) => (
+                                  <span
+                                    key={date}
+                                    className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium"
+                                  >
+                                    {new Date(date).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 font-medium text-gray-800">
+                              {booking.timeSlot}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 text-xs max-w-xs truncate">
+                              {booking.notes || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => deleteBooking(booking.id)}
+                                className="text-red-600 hover:text-red-800 font-bold"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </td>
+                          </motion.tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Back to Scheduler Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => {
+                  setView('scheduler');
+                  setAdminToken('');
+                }}
+                className="block mx-auto bg-gray-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-700 transition"
+              >
+                Back to Scheduler
+              </motion.button>
+            </>
+          )}
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
+export default App;
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": {
+    "VITE_APP_NAME": "Imani Green Health Advocate Tree Maintenance Scheduler"
+  }
+}
