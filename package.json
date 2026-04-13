@@ -1,0 +1,1 @@
+{"name": "imani-green-scheduler", "homepage": "https://imanivillage2021-cloud.github.io/ImaniGHA-Annual-Tree-Maintenance-Scheduler", "scripts": {"deploy": "npm run build && gh-pages -d dist"}, "devDependencies": {"gh-pages": "^6.1.1"}}
